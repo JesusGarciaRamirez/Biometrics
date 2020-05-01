@@ -45,7 +45,6 @@ class CMC (object):
             #update freq
             if(not(correct_rank is None)):
                 ranks_freq[correct_rank]+=1
-
         #Normalize
         ranks_freq=ranks_freq/len(self.enrrollees)
         #cumulative frequencies
@@ -65,8 +64,6 @@ class CMC (object):
                             you have computed the cumulative frequencies")
         else:
             return self.cumulative_freq[rank-1]
-
-
 
 if __name__ == "__main__":
     #Load similarity matrices
