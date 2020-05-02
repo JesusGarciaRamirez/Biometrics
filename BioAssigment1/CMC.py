@@ -1,6 +1,8 @@
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.metrics import auc
 def cum_sum(arr):
     """Auxiliary generator to compute cummulative arrays
      (eg. x=[0,1,2]; x_cum=[0,0+1,0+1+2]=[0,1,3])  """
@@ -64,6 +66,22 @@ class CMC (object):
                             you have computed the cumulative frequencies")
         else:
             return self.cumulative_freq[rank-1]
+
+    def plot_CMC_curve(self):
+        try:
+            self.is_defined("cumulative_freq")
+        except:
+            self.compute_CMC_curve()
+        ranks_arr=range(1,self.n_ranks+1)
+        CMC_auc=auc(ranks_arr,self.cumulative_freq)/self.n_ranks
+        plt.plot(ranks_arr, self.cumulative_freq, color='darkorange',
+                lw=2, label='CMC curve (auc = %0.2f)' % CMC_auc)
+        plt.xlabel('Rank')
+        plt.ylabel('Recognition Rate')
+        plt.title('Fingerprint detector CMC curve')
+        plt.legend(loc="lower right")
+        plt.show()
+
 
 if __name__ == "__main__":
     #Load similarity matrices
