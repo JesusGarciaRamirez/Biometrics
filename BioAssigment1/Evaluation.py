@@ -92,9 +92,8 @@ class Metrics(object):
         if opt:
             opt_id=self._get_opt_threshold(metric)
 
-            print("Optimal {} value = {} given at threshold {}".format(metric,
-                                                                self.metrics[metric][opt_id],
-                                                                self.thresholds[opt_id]))
+            print(f"Optimal {metric} value = {self.metrics[metric][opt_id]:.2f} given at threshold {self.thresholds[opt_id]:.2f}")
+
     def plot_far_frr(self,ax):
         try:
             self.is_defined("roc")
@@ -157,11 +156,11 @@ class Metrics(object):
         pr_auc=auc(self.recall,self.precision)
         ax.plot(self.precision, self.recall, color='darkorange',
                 lw=2, label='Precision-Recall curve (auc = %0.2f)' % pr_auc )
-        ax.xlim([0.0, 1.0])
-        ax.ylim([0.0, 1.05])
-        ax.xlabel('Recall')
-        ax.ylabel('Precision')
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel('Recall')
+        ax.set_ylabel('Precision')
         title=self._set_title('Fingerprint detector Precision-Recall curve')
-        ax.title(title)
+        ax.set_title(title)
         ax.legend(loc="lower right")
         # plt.show()
