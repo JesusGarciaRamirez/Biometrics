@@ -4,9 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class Metrics(object):
-    def __init__(self,scores,labels):
+    def __init__(self,scores,labels,name=None):
         self.scores=scores
         self.labels=labels
+        self.__name__=name
         self.thresholds=None
         self.tpr=None
         self.fpr=None
@@ -69,17 +70,24 @@ class Metrics(object):
                 self.metrics[metric_name].append(metric_score)
 
         return self.metrics
+    def _set_title(self,base_title):
+        try:
+            self.is_defined("__name__")
+            return " ".join([base_title,f"({self.__name__})"])
+        except:
+            return base_title
 
-    def plot_metric(self,metric,metrics_dict,opt=True):
+    def plot_metric(self,metric,metrics_dict,ax,opt=True):
         try:
             self.is_defined("metrics")
         except:
             self.log_metrics(metrics_dict)
-        plt.plot(self.thresholds,self.metrics[metric])
-        plt.xlabel("score")
-        plt.ylabel("{} ".format(metric))
-        plt.title("{} as function of threshold".format(metric))
-        plt.show()
+        ax.plot(self.thresholds,self.metrics[metric])
+        ax.set_xlabel("score")
+        ax.set_ylabel("{} ".format(metric))
+        title=self._set_title("{} as function of threshold".format(metric))
+        ax.set_title(title)
+        # plt.show()
 
         if opt:
             opt_id=self._get_opt_threshold(metric)
@@ -87,20 +95,20 @@ class Metrics(object):
             print("Optimal {} value = {} given at threshold {}".format(metric,
                                                                 self.metrics[metric][opt_id],
                                                                 self.thresholds[opt_id]))
-    def plot_far_frr(self):
+    def plot_far_frr(self,ax):
         try:
             self.is_defined("roc")
         except:
             self.get_roc_metrics()
 
-        plt.plot(self.thresholds,self.frr,label="FRR")
-        plt.plot(self.thresholds,self.tpr,label="FAR")
-        plt.legend()
-        plt.xlim(0,1)
-        plt.title("False Acceptance Rate (FAR) vs False Rejection Rate (FRR)")
-        plt.show()
+        ax.plot(self.thresholds,self.frr,label="FRR")
+        ax.plot(self.thresholds,self.tpr,label="FAR")
+        ax.legend()
+        # ax.xlim(0,1)
+        title=self._set_title("False Acceptance Rate (FAR) vs False Rejection Rate (FRR)")
+        ax.set_title(title)
 
-    def plot_roc_curve(self):
+    def plot_roc_curve(self,ax):
         """plot the ROC curve
              (TPR against the FPR for different threshold values)"""
         try:
@@ -109,35 +117,37 @@ class Metrics(object):
             self.get_roc_metrics()
         
         roc_auc=auc(self.fpr,self.tpr)
-        plt.plot(self.fpr, self.tpr, color='darkorange',
+        ax.plot(self.fpr, self.tpr, color='darkorange',
                 lw=2, label='ROC curve (auc = %0.2f)' % roc_auc)
-        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate')
-        plt.ylabel('True Positive Rate')
-        plt.title('Fingerprint detector ROC curve')
-        plt.legend(loc="lower right")
-        plt.show()
+        ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel('False Positive Rate')
+        ax.set_ylabel('True Positive Rate')
+        title=self._set_title('Fingerprint detector ROC curve')
+        ax.set_title(title)
+        ax.legend(loc="lower right")
+        # plt.show()
 
-    def plot_det_curve(self):
+    def plot_det_curve(self,ax):
         """plot the DET curve 
         (FRR (=1-tpr) against the FAR for different threshold values)"""
         try:
             self.is_defined("roc")
         except:
             self.get_roc_metrics()
-        plt.plot(self.frr, self.tpr, color='darkorange',
+        ax.plot(self.frr, self.tpr, color='darkorange',
                 lw=2, label='DET curve ')
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('False Rejection Rate')
-        plt.ylabel('False Acceptance Rate')
-        plt.title('Fingerprint detector DET curve')
-        plt.legend(loc="upper right")
-        plt.show()
+        ax.set_xlim([0.0, 1.0])
+        ax.set_ylim([0.0, 1.05])
+        ax.set_xlabel('False Rejection Rate')
+        ax.set_ylabel('False Acceptance Rate')
+        title=self._set_title('Fingerprint detector DET curve')
+        ax.set_title(title)
+        ax.legend(loc="upper right")
+        # plt.show()
 
-    def plot_pr_curve(self):
+    def plot_pr_curve(self,ax):
         """Calculate and plot the Precision-Recall curve for this system"""
         try:
             self.is_defined("pr")
@@ -145,12 +155,13 @@ class Metrics(object):
             self.get_pr_metrics()
 
         pr_auc=auc(self.recall,self.precision)
-        plt.plot(self.precision, self.recall, color='darkorange',
+        ax.plot(self.precision, self.recall, color='darkorange',
                 lw=2, label='Precision-Recall curve (auc = %0.2f)' % pr_auc )
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('Recall')
-        plt.ylabel('Precision')
-        plt.title('Fingerprint detector Precision-Recall curve')
-        plt.legend(loc="lower right")
-        plt.show()
+        ax.xlim([0.0, 1.0])
+        ax.ylim([0.0, 1.05])
+        ax.xlabel('Recall')
+        ax.ylabel('Precision')
+        title=self._set_title('Fingerprint detector Precision-Recall curve')
+        ax.title(title)
+        ax.legend(loc="lower right")
+        # plt.show()

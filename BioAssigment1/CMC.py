@@ -13,16 +13,23 @@ def cum_sum(arr):
 
 class CMC (object):
     """Calculate the Cumulative Matching Characteristic curve."""
-    def __init__(self,similarity_matrix,n_ranks=100):
+    def __init__(self,similarity_matrix,n_ranks=100,name=None):
         self.similarity_matrix=similarity_matrix
         self.enrrollees=similarity_matrix.columns
         self.users=similarity_matrix.index
         self.n_ranks=n_ranks
+        self.__name__=name
         self.cumulative_freq=None
 
     def is_defined(self,argument):
         if(getattr(self,argument)==None):
             raise ValueError
+    def _set_title(self,base_title):
+        try:
+            self.is_defined("__name__")
+            return " ".join([base_title,f"({self.__name__})"])
+        except:
+            return base_title
 
     def _users_argsort(self,seq,reverse=True):
         return sorted(self.enrrollees, key=seq.__getitem__,reverse=reverse)[:self.n_ranks]
@@ -67,20 +74,21 @@ class CMC (object):
         else:
             return self.cumulative_freq[rank-1]
 
-    def plot_CMC_curve(self):
+    def plot_CMC_curve(self,ax):
         try:
             self.is_defined("cumulative_freq")
         except:
             self.compute_CMC_curve()
         ranks_arr=range(1,self.n_ranks+1)
         CMC_auc=auc(ranks_arr,self.cumulative_freq)/self.n_ranks
-        plt.plot(ranks_arr, self.cumulative_freq, color='darkorange',
+        ax.plot(ranks_arr, self.cumulative_freq, color='darkorange',
                 lw=2, label='CMC curve (auc = %0.2f)' % CMC_auc)
-        plt.xlabel('Rank')
-        plt.ylabel('Recognition Rate')
-        plt.title('Fingerprint detector CMC curve')
-        plt.legend(loc="lower right")
-        plt.show()
+        ax.set_xlabel('Rank')
+        ax.set_ylabel('Recognition Rate')
+        title=self._set_title('Fingerprint detector CMC curve')
+        ax.set_title(title)
+        ax.legend(loc="lower right")
+        # plt.show()
 
 
 if __name__ == "__main__":
