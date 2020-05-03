@@ -77,7 +77,7 @@ class Metrics(object):
         except:
             return base_title
 
-    def plot_metric(self,metric,metrics_dict,ax,opt=True):
+    def plot_metric(self,ax,metric,metrics_dict,opt=True):
         try:
             self.is_defined("metrics")
         except:
@@ -103,7 +103,7 @@ class Metrics(object):
         ax.plot(self.thresholds,self.frr,label="FRR")
         ax.plot(self.thresholds,self.tpr,label="FAR")
         ax.legend()
-        # ax.xlim(0,1)
+        ax.xlim(0,1)
         title=self._set_title("False Acceptance Rate (FAR) vs False Rejection Rate (FRR)")
         ax.set_title(title)
 
