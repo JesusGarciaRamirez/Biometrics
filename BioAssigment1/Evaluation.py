@@ -25,6 +25,22 @@ class Metrics(object):
         self.frr=1-self.tpr
         #Flag to specify that roc related metrics have been already computed
         self.roc=True
+    
+    def compute_eer_point(self):
+        eer_index=np.nanargmin(np.absolute((self.frr - self.fpr)))
+        eer_threshold = self.thresholds[eer_index]
+        print(eer_threshold)
+        frr_eer= self.frr[eer_index]
+        tpr_eer=self.tpr[eer_index]
+        return frr_eer,tpr_eer
+
+    def compute_min_sum_point(self):
+        min_sum_index=np.nanargmin(np.absolute((self.frr + self.fpr)))
+        min_sum_threshold = self.thresholds[min_sum_index]
+        min_sum_fpr=self.fpr[min_sum_index]
+        min_sum_tpr=self.tpr[min_sum_index]
+        return min_sum_fpr,min_sum_tpr
+
 
     def get_pr_metrics(self):
         self.precision, self.recall, self.thresholds = precision_recall_curve(self.labels,self.scores)
@@ -107,9 +123,28 @@ class Metrics(object):
         title=self._set_title("False Acceptance Rate (FAR) vs False Rejection Rate (FRR)")
         ax.set_title(title)
 
-    def plot_roc_curve(self,ax):
+    def _add_eer_point(self,ax):
+        fpr_eer,tpr_eer=self.compute_eer_point()
+        ax.plot(fpr_eer,tpr_eer,"or")
+        ax.annotate('EER ',
+            xy=(fpr_eer, tpr_eer), xycoords='data',
+            xytext=(5, 5), textcoords='offset points',
+            horizontalalignment='right', verticalalignment='bottom')
+
+    def _add_min_sum_point(self,ax):
+        min_sum_fpr,min_sum_tpr=self.compute_min_sum_point()
+        ax.plot(min_sum_fpr,min_sum_tpr,"or")
+        ax.annotate('Minimal sum ',
+            xy=(min_sum_fpr, min_sum_tpr), xycoords='data',
+            xytext=(70, -35), textcoords='offset points',
+            arrowprops=dict(facecolor='black', shrink=0.1),
+            horizontalalignment='right', verticalalignment='bottom')
+
+    def plot_roc_curve(self,ax,point=""):
         """plot the ROC curve
-             (TPR against the FPR for different threshold values)"""
+             (TPR against the FPR for different threshold values)
+             point=="EER" if add EER point to plot
+             point == "min_sum" if add far,frr min sum point to plot"""
         try:
             self.is_defined("roc")
         except:
@@ -125,6 +160,10 @@ class Metrics(object):
         ax.set_ylabel('True Positive Rate')
         title=self._set_title('Fingerprint detector ROC curve')
         ax.set_title(title)
+        if (point=="EER"):
+            self._add_eer_point(ax)
+        if(point=="min_sum"):
+            self._add_min_sum_point(ax)
         ax.legend(loc="lower right")
         # plt.show()
 
