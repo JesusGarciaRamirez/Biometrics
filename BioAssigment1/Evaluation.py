@@ -29,7 +29,6 @@ class Metrics(object):
     def compute_eer_point(self):
         eer_index=np.nanargmin(np.absolute((self.frr - self.fpr)))
         eer_threshold = self.thresholds[eer_index]
-        print(eer_threshold)
         frr_eer= self.frr[eer_index]
         tpr_eer=self.tpr[eer_index]
         return frr_eer,tpr_eer

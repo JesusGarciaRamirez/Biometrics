@@ -10,15 +10,48 @@ class fpMatcher(object):
         self.keypoint_extractor = keypoint_extractor
         self.matcher = cv2.BFMatcher(distance_metric, crossCheck=True)
         self.detector = self.keypoint_extractor(**detector_opts)
+        self.images = None
+        self.labels = None
+        self.masks = None
 
     def is_defined(self,argument):
         if(getattr(self,argument)==None):
             raise ValueError
+    
+    def sample_pairs(self,genuine=True):
+        """Sample pair of random test images from dataset:
+            if genuine = True, sample two images from same individual
+            otherwise, it present images from different individuals"""
+        try:
+            is_defined("images")
+        except:
+            self.get_enhanced_images()
+        #Random sample
+        idx1=np.random.randint(0,len(self.labels)-1)
+        #get label of random instance
+        label_1=self.labels[idx1]
+        if genuine:
+            #get random instance with label==label_1
+            idx_list = np.squeeze(np.argwhere(self.labels == label_1)) #genuine indexes
+        else:
+            #get random instance with label!=label_1
+            idx_list = np.squeeze(np.argwhere(self.labels != label_1)) #impostor indexes
+        #sample one index from correspondant list(genuine or impostors)
+        idx2=int(np.random.choice(idx_list, 1))
+        return [idx1,idx2]
 
+    def get_samples_info(self,idx_list):
+        images=[self.images[idx] for idx in idx_list]
+        masks=[self.masks[idx] for idx in idx_list]
+        labels=[self.labels[idx] for idx in idx_list]
+        return images,masks,labels
+        
     def get_enhanced_images(self):
         p_file = open(self.dataset_path, "rb" )
-        [images_enhanced, labels, masks] = pickle.load(p_file)
-        return images_enhanced,labels,masks
+        [images, labels, masks] = pickle.load(p_file)
+        self.images=images
+        self.labels=np.array(labels,dtype=np.int32)
+        self.masks=masks
 
     def detect_raw_kp(self,image):
         kp, desc = self.detector.detectAndCompute(image, None)
@@ -103,8 +136,26 @@ class fpMatcher(object):
 
         # transform the first keypoint set using the transformation M
         kp1_reg = self.transform_keypoints(keypoints[0], M)
-                                                
         return kp1_reg, matched, M, keypoints
+
+    def keypoint_plot(self,images,masks,labels=None):
+        """Plot keypoint extraction results on test image"""
+        ax = plt.figure()
+        _, ax = plt.subplots(nrows = 1, ncols = len(images), figsize=(10,10))
+        for i,(img,mask) in enumerate(zip(images,masks)):
+            #compute keypoints
+            kp,_ = self.detect_kp(img,mask)
+            #draw keypoints on image
+            kp_result_image = cv2.drawKeypoints(img,
+                                                 kp, None, (255, 0, 0), 
+                                                 cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+            # Add to correspondant matplotlib subplot
+            ax[i].imshow(kp_result_image)
+            if(labels is not None):
+                ax[i].set_title(f"label of image : {labels[i]}")
+            
+        
+        plt.show()
 
     def local_matching_plot(self,images, masks):
         #Local matching
@@ -129,3 +180,32 @@ class fpMatcher(object):
         plt.show()
         print("Number of affine inliers :{}".format(len(matched)))
 
+#Debugging
+if __name__ == "__main__":
+    #read images,masks..
+    dataset_path= "./fprdata/DB1_enhanced.p"
+    p_file = open(dataset_path, "rb" )
+    [images_enhanced_db1, labels_db1, masks_db1] = pickle.load(p_file)
+    #test images from same individual
+    #create fpMatcher instance
+    # detector_opts={"nfeatures": 500}
+    # detector_opts={"hessianThreshold ": 400}
+    detector_opts={}
+    # detector=cv2.xfeatures2d.SURF_create
+    # detector=cv2.KAZE_create
+    # detector=cv2.AKAZE_create
+    detector=cv2.BRISK_create
+    # detector=cv2.ORB_create
+    fpmatcher=fpMatcher(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
+    print("HI")
+    #test sampler (same individual)
+    images,masks,labels= fpmatcher.get_samples_info(fpmatcher.sample_pairs(genuine=True))
+    #test keypoint ploting
+    fpmatcher.keypoint_plot(images,masks,labels)
+    # #test local matching
+    # fpmatcher.local_matching_plot(images,masks)
+    # print("Hi")
+    # #test global matching
+    # fpmatcher.global_matching_plot(images,masks)
+    print("Hi")
+    pass
