@@ -21,6 +21,19 @@ class CMC (object):
         self.__name__=name
         self.cumulative_freq=None
 
+    @property
+    def n_ranks(self):
+        return self.__nranks
+        
+    @n_ranks.setter
+    def n_ranks(self, n_ranks):
+        if n_ranks < 0:
+            self.__nranks = 0
+        elif n_ranks > len(self.users):
+            self.__nranks = len(self.users)
+        else:
+            self.__nranks = n_ranks
+
     def is_defined(self,argument):
         if(getattr(self,argument)==None):
             raise ValueError

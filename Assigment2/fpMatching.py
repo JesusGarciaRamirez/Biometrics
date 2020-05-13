@@ -3,9 +3,14 @@ import numpy as np
 from matplotlib import pyplot as plt
 import pickle
 from tqdm import tqdm
-from Evaluation import Metrics
 from scipy.spatial import distance
 import pandas as pd
+import os
+import sys
+project_path=os.path.dirname(os.getcwd()) 
+sys.path.append(project_path)
+from BioAssigment1.CMC import CMC
+from BioAssigment1.Evaluation import Metrics
 
 class fpMatcher(object):
     def __init__(self,dataset_path,keypoint_extractor,detector_opts,distance_metric):
@@ -269,7 +274,7 @@ class fpScorer(fpMatcher):
         #init tensor
         fp_per_individual = len(self.labels[self.labels == 1])
         similarity_tensor = np.empty([fp_per_individual - 1,len(users),len(users)])
-        
+
         for batch_id in tqdm(range(fp_per_individual - 1)):
             for enrollee in enrollees:
                 #sample enrrolee id
@@ -326,6 +331,7 @@ class pair_sampler(object):
 
 #Debugging
 if __name__ == "__main__":
+
     #read images,masks..
     dataset_path= "./fprdata/DB1_enhanced.p"
     p_file = open(dataset_path, "rb" )
@@ -355,8 +361,12 @@ if __name__ == "__main__":
     # scores,labels = fpscorer.global_score_dataset(downsampling=True,**scoring_otps)
     agg_fcn = np.sum
     fcn_args ={"axis" : 0}
-    users_idx=fpscorer.construct_similarity_matrix(agg_fcn,**fcn_args)
-
+    similarity_matrix=fpscorer.construct_similarity_matrix(agg_fcn,**fcn_args)
+    #cmc
+    cmc_obj=CMC(similarity_matrix)
+    _,ax=plt.subplots(1,1)
+    cmc_obj.plot_CMC_curve(ax)
+    plt.show()  
 #     # #distributions... 
 #     # from sklearn.preprocessing import MinMaxScaler
 #     # from utils_bio import plot_dist,plot_joint_dist
