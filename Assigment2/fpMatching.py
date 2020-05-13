@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import pickle
 from tqdm import tqdm
 from Evaluation import Metrics
+from scipy.spatial import distance
 
 def is_defined(instance,argument):
     if(getattr(instance,argument)==None):
@@ -154,8 +155,6 @@ class fpMatcher(object):
             ax[i].imshow(kp_result_image)
             if(labels is not None):
                 ax[i].set_title(f"label of image : {labels[i]}")
-            
-        
         plt.show()
 
     def local_matching_plot(self,images, masks):
@@ -189,7 +188,6 @@ class fpMatcher(object):
         return score
 
 class fpScorer(fpMatcher):
-
     def __init__(self,dataset_path,keypoint_extractor,detector_opts,distance_metric):
         super(fpScorer,self).__init__(dataset_path,keypoint_extractor,detector_opts,distance_metric)
 
@@ -198,8 +196,6 @@ class fpScorer(fpMatcher):
             is_defined(self,"images")
         except:
             self.get_enhanced_images()
-
-        
         if(downsampling):
             #get reduced set of total dataset (eg. 30 samples)
             index_list = list(np.random.choice(len(self.images), 30,replace=False))
@@ -215,7 +211,7 @@ class fpScorer(fpMatcher):
                 #local matching
                 matches,_ = self.match_BruteForce_local(images,masks)
                 #score
-                score = self.local_scoring(matches,**kwargs)
+                score = self.get_local_scoring(matches,**kwargs)
                 #update
                 scores.append(score)
                 label = 1 if labels[0]==labels[1] else 0
@@ -225,39 +221,144 @@ class fpScorer(fpMatcher):
         genuine_ids = np.array(genuine_ids,dtype=np.int32)
         return scores,genuine_ids
 
-    def local_scoring(self,matches,N_best):
+    def global_score_dataset(self,downsampling=True,**kwargs):
+        try:
+            is_defined(self,"images")
+        except:
+            self.get_enhanced_images()
+        if(downsampling):
+            #get reduced set of total dataset (eg. 30 samples)
+            index_list = list(np.random.choice(len(self.images), 30,replace=False))
+        else:
+            index_list = range(len(self.images))
+        genuine_ids=[]
+        scores=[]   
+        for count,idx1 in tqdm(enumerate(index_list)):
+            rest_idx = index_list[count+1:]
+            for idx2 in rest_idx:
+                #get samples info
+                images,masks,labels= self.get_samples_info([idx1,idx2])
+                #global matching
+                _, global_matches, _, keypoints = self.match_BruteForce_global(images,masks)
+                #score
+                score = self.get_global_scoring(global_matches,keypoints)
+                #update
+                scores.append(score)
+                label = 1 if labels[0]==labels[1] else 0
+                genuine_ids.append(label) 
+
+        scores = np.array(scores,dtype=np.float32)
+        genuine_ids = np.array(genuine_ids,dtype=np.int32)
+        return scores,genuine_ids
+
+
+    def compute_scores_tensor(self):
+        #init sampler
+        
+        #get users idx
+
+        return peep
+    def get_local_scoring(self,matches,N_best):
         #get kp distances from top N best matches
         best_matches_distances=np.array([matches[idx].distance 
                                         for idx in range(N_best)],dtype=np.float32)
-        #local score == Inverse of mean distances 
+        #local score == Inverse of mean feature distances 
         score = 1/ (np.mean(best_matches_distances) + 1)
         return score
 
-#Debugging
+    def get_global_scoring(self,global_matches,keypoints):
+        #get affine keypoints from matches
+        # retain only the keypoints associated to the best matches 
+        src_pts = np.float32([keypoints[0][m.queryIdx].pt for m in global_matches]).reshape(-1, 1, 2)
+        dst_pts = np.float32([keypoints[1][m.trainIdx].pt for m in global_matches]).reshape(-1, 1, 2)
+        #get distances
+        geometric_distances = np.float32([distance.euclidean(kp1,kp2) for kp1,kp2 in zip(src_pts,dst_pts)])
+        #global score == Inverse of mean geometrical distances 
+        score = 1/ (np.mean(geometric_distances) + 1) 
+        return (score * len(global_matches))
+
+class pair_sampler(object):
+    def __init__(self,idx_list,labels):
+        self.idx_list = idx_list
+        self.labels=np.array(labels,dtype=np.int32)
+
+    def __call__(self,query_label):
+        #find id
+        found_id = next(idx for idx in self.idx_list if self.labels[idx] == query_label)
+        #drop
+        _ = self.idx_list.pop(found_id)
+        print(found_id,len(self.idx_list))
+        return found_id
+
+# #Debugging
+# if __name__ == "__main__":
+#     #read images,masks..
+#     dataset_path= "./fprdata/DB1_enhanced.p"
+#     p_file = open(dataset_path, "rb" )
+#     [images_enhanced_db1, labels_db1, masks_db1] = pickle.load(p_file)
+#     #test images from same individual
+#     #create fpMatcher instance
+#     # detector_opts={"nfeatures": 500}
+#     # detector_opts={"hessianThreshold ": 400}
+#     detector_opts={}
+#     # detector=cv2.xfeatures2d.SURF_create
+#     # detector=cv2.KAZE_create
+#     # detector=cv2.AKAZE_create
+#     detector=cv2.BRISK_create
+#     # detector=cv2.ORB_create
+#     # fpmatcher=fpMatcher(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
+#     # #same individual
+#     # images,masks,_ = fpmatcher.get_samples_info(fpmatcher.sample_pairs(genuine=True))
+#     # kp1_reg, matched, M, keypoints = fpmatcher.match_BruteForce_global(images,masks)
+#     # #different individual
+#     # images,masks,_ = fpmatcher.get_samples_info(fpmatcher.sample_pairs(genuine=False))
+#     # kp1_reg, matched, M, keypoints = fpmatcher.match_BruteForce_global(images,masks)
+
+#     # #global scoring
+#     # scoring_otps={"N_best": 10}
+#     # # scores,ids = fpmatcher.create_dataset_scores(test_local_scoring,**scoring_otps)
+#     # fpscorer=fpScorer(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
+#     # # scores,labels = fpscorer.global_score_dataset(downsampling=True,**scoring_otps)
+
+#     # #distributions... 
+#     # from sklearn.preprocessing import MinMaxScaler
+#     # from utils_bio import plot_dist,plot_joint_dist
+#     # from scipy.stats import gamma, norm
+
+#     # """Plot the genuine and imposter score distributions."""
+#     # #get genuine & impostor scores
+#     # genuine_scores=scores[labels==1]
+#     # impostor_scores=scores[labels==0]
+#     # # scores=np.concatenate([genuine_scores,impostor_scores])
+#     # #Get Scaler of total scores to transform range
+#     # # scaler=MinMaxScaler().fit(scores.reshape(-1,1))
+#     # # genuine_dict={}
+#     # # genuine_dict["dist"],genuine_dict["points"]=plot_dist(genuine_scores,scaler,norm,"Genuine Scores distribution")
+#     # # impostor_dict={}
+#     # # impostor_dict["dist"],impostor_dict["points"]=plot_dist(impostor_scores,scaler,norm,"Impostor Scores distribution")
+#     # # plot_joint_dist(genuine_dict,impostor_dict,x_lim=(0,1))
+#     # _=plt.hist(genuine_scores,density=True)
+#     # plt.show()
+#     # _=plt.hist(impostor_scores,density=True)
+#     # plt.show()
+
+#     # metric_logger = Metrics(scores,labels,"FingerPrint_global")
+#     # _,ax=plt.subplots(1,1)
+#     # metric_logger.plot_roc_curve(ax)
+#     # plt.show()
+#     print("Hi")
+#     pass
+
 if __name__ == "__main__":
     #read images,masks..
     dataset_path= "./fprdata/DB1_enhanced.p"
     p_file = open(dataset_path, "rb" )
     [images_enhanced_db1, labels_db1, masks_db1] = pickle.load(p_file)
-    #test images from same individual
-    #create fpMatcher instance
-    # detector_opts={"nfeatures": 500}
-    # detector_opts={"hessianThreshold ": 400}
-    detector_opts={}
-    # detector=cv2.xfeatures2d.SURF_create
-    # detector=cv2.KAZE_create
-    # detector=cv2.AKAZE_create
-    detector=cv2.BRISK_create
-    # detector=cv2.ORB_create
-    # fpmatcher=fpMatcher(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
-    #local scoring
-    scoring_otps={"N_best": 10}
-    # scores,ids = fpmatcher.create_dataset_scores(test_local_scoring,**scoring_otps)
-    fpscorer=fpScorer(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
-    scores,labels = fpscorer.local_score_dataset(downsampling=False,**scoring_otps)
-    metric_logger = Metrics(scores,labels,"FingerPrint_local")
-    _,ax=plt.subplots(1,1)
-    metric_logger.plot_roc_curve(ax)
-    plt.show()
-    print("Hi")
+    #sampler
+    sampler=pair_sampler(list(range(len(labels_db1))),labels_db1)
+
+    test_idx=[2,5,7,5]
+    for idx in test_idx:
+        res=sampler(idx)
+        print(res)
     pass
