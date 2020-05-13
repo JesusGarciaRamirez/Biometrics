@@ -253,11 +253,36 @@ class fpScorer(fpMatcher):
 
 
     def compute_scores_tensor(self):
+        try:
+            is_defined(self,"labels")
+        except:
+            self.get_enhanced_images()
         #init sampler
-        
+        sampler = pair_sampler(self.labels)
         #get users idx
+        users=set(self.labels)
+        enrollees=users
+        users_idx=[sampler(user) for user in users]
+        
+        #init tensor
+        fp_per_individual = len(self.labels[self.labels == 1])
+        cmc_tensor = np.empty([fp_per_individual - 1,len(users),len(users)])
 
-        return peep
+        for batch_id in tqdm(range(fp_per_individual - 1)):
+            for enrollee in enrollees:
+                #sample enrrolee id
+                enrollee_id = sampler(enrollee)
+                for user_id,user in zip(users_idx,users):
+                    #get pair info
+                    images,masks, _= self.get_samples_info([user_id,enrollee_id])
+                    #score
+                    _, global_matches, _, keypoints = self.match_BruteForce_global(images,masks)
+                    score = self.get_global_scoring(global_matches,keypoints)
+                    #fill tensor
+                    #users,enrrolees in {1,10} --> index == user -1
+                    cmc_tensor[batch_id,user-1,enrollee-1] = score
+        return cmc_tensor
+
     def get_local_scoring(self,matches,N_best):
         #get kp distances from top N best matches
         best_matches_distances=np.array([matches[idx].distance 
@@ -278,47 +303,46 @@ class fpScorer(fpMatcher):
         return (score * len(global_matches))
 
 class pair_sampler(object):
-    def __init__(self,idx_list,labels):
-        self.idx_list = idx_list
+    def __init__(self,labels):
         self.labels=np.array(labels,dtype=np.int32)
 
     def __call__(self,query_label):
         #find id
-        found_id = next(idx for idx in self.idx_list if self.labels[idx] == query_label)
-        #drop
-        _ = self.idx_list.pop(found_id)
-        print(found_id,len(self.idx_list))
-        return found_id
+        found_id = np.argwhere(self.labels == query_label)[0] #first occurence of label==query_label
+        #set label of found_id to -1 so we can´t get this same id again
+        self.labels[found_id] = -1
+        return int(found_id)
 
-# #Debugging
-# if __name__ == "__main__":
-#     #read images,masks..
-#     dataset_path= "./fprdata/DB1_enhanced.p"
-#     p_file = open(dataset_path, "rb" )
-#     [images_enhanced_db1, labels_db1, masks_db1] = pickle.load(p_file)
-#     #test images from same individual
-#     #create fpMatcher instance
-#     # detector_opts={"nfeatures": 500}
-#     # detector_opts={"hessianThreshold ": 400}
-#     detector_opts={}
-#     # detector=cv2.xfeatures2d.SURF_create
-#     # detector=cv2.KAZE_create
-#     # detector=cv2.AKAZE_create
-#     detector=cv2.BRISK_create
-#     # detector=cv2.ORB_create
-#     # fpmatcher=fpMatcher(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
-#     # #same individual
-#     # images,masks,_ = fpmatcher.get_samples_info(fpmatcher.sample_pairs(genuine=True))
-#     # kp1_reg, matched, M, keypoints = fpmatcher.match_BruteForce_global(images,masks)
-#     # #different individual
-#     # images,masks,_ = fpmatcher.get_samples_info(fpmatcher.sample_pairs(genuine=False))
-#     # kp1_reg, matched, M, keypoints = fpmatcher.match_BruteForce_global(images,masks)
+#Debugging
+if __name__ == "__main__":
+    #read images,masks..
+    dataset_path= "./fprdata/DB1_enhanced.p"
+    p_file = open(dataset_path, "rb" )
+    [images_enhanced_db1, labels_db1, masks_db1] = pickle.load(p_file)
+    #test images from same individual
+    #create fpMatcher instance
+    # detector_opts={"nfeatures": 500}
+    # detector_opts={"hessianThreshold ": 400}
+    detector_opts={}
+    # detector=cv2.xfeatures2d.SURF_create
+    # detector=cv2.KAZE_create
+    # detector=cv2.AKAZE_create
+    detector=cv2.BRISK_create
+    # detector=cv2.ORB_create
+    # fpmatcher=fpMatcher(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
+    # #same individual
+    # images,masks,_ = fpmatcher.get_samples_info(fpmatcher.sample_pairs(genuine=True))
+    # kp1_reg, matched, M, keypoints = fpmatcher.match_BruteForce_global(images,masks)
+    # #different individual
+    # images,masks,_ = fpmatcher.get_samples_info(fpmatcher.sample_pairs(genuine=False))
+    # kp1_reg, matched, M, keypoints = fpmatcher.match_BruteForce_global(images,masks)
 
-#     # #global scoring
-#     # scoring_otps={"N_best": 10}
-#     # # scores,ids = fpmatcher.create_dataset_scores(test_local_scoring,**scoring_otps)
-#     # fpscorer=fpScorer(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
-#     # # scores,labels = fpscorer.global_score_dataset(downsampling=True,**scoring_otps)
+    #global scoring
+    scoring_otps={"N_best": 10}
+    # scores,ids = fpmatcher.create_dataset_scores(test_local_scoring,**scoring_otps)
+    fpscorer=fpScorer(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
+    # scores,labels = fpscorer.global_score_dataset(downsampling=True,**scoring_otps)
+    users_idx=fpscorer.compute_scores_tensor()
 
 #     # #distributions... 
 #     # from sklearn.preprocessing import MinMaxScaler
@@ -347,18 +371,5 @@ class pair_sampler(object):
 #     # metric_logger.plot_roc_curve(ax)
 #     # plt.show()
 #     print("Hi")
-#     pass
-
-if __name__ == "__main__":
-    #read images,masks..
-    dataset_path= "./fprdata/DB1_enhanced.p"
-    p_file = open(dataset_path, "rb" )
-    [images_enhanced_db1, labels_db1, masks_db1] = pickle.load(p_file)
-    #sampler
-    sampler=pair_sampler(list(range(len(labels_db1))),labels_db1)
-
-    test_idx=[2,5,7,5]
-    for idx in test_idx:
-        res=sampler(idx)
-        print(res)
     pass
+
