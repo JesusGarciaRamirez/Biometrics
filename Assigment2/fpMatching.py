@@ -5,10 +5,7 @@ import pickle
 from tqdm import tqdm
 from Evaluation import Metrics
 from scipy.spatial import distance
-
-def is_defined(instance,argument):
-    if(getattr(instance,argument)==None):
-        raise ValueError
+import pandas as pd
 
 class fpMatcher(object):
     def __init__(self,dataset_path,keypoint_extractor,detector_opts,distance_metric):
@@ -19,7 +16,10 @@ class fpMatcher(object):
         self.images = None
         self.labels = None
         self.masks = None
-
+    
+    def is_defined(self,argument):
+        if(getattr(self,argument)==None):
+            raise ValueError
     def sample_pairs(self,genuine=True):
         """Sample pair of random test images from dataset:
             if genuine = True, sample two images from same individual
@@ -191,6 +191,9 @@ class fpScorer(fpMatcher):
     def __init__(self,dataset_path,keypoint_extractor,detector_opts,distance_metric):
         super(fpScorer,self).__init__(dataset_path,keypoint_extractor,detector_opts,distance_metric)
 
+    def is_defined(self,argument):
+        if(getattr(self,argument)==None):
+            raise ValueError
     def local_score_dataset(self,downsampling=True,**kwargs):
         try:
             is_defined(self,"images")
@@ -251,8 +254,7 @@ class fpScorer(fpMatcher):
         genuine_ids = np.array(genuine_ids,dtype=np.int32)
         return scores,genuine_ids
 
-
-    def compute_scores_tensor(self):
+    def _compute_similarity_tensor(self):
         try:
             is_defined(self,"labels")
         except:
@@ -266,8 +268,8 @@ class fpScorer(fpMatcher):
         
         #init tensor
         fp_per_individual = len(self.labels[self.labels == 1])
-        cmc_tensor = np.empty([fp_per_individual - 1,len(users),len(users)])
-
+        similarity_tensor = np.empty([fp_per_individual - 1,len(users),len(users)])
+        
         for batch_id in tqdm(range(fp_per_individual - 1)):
             for enrollee in enrollees:
                 #sample enrrolee id
@@ -280,8 +282,17 @@ class fpScorer(fpMatcher):
                     score = self.get_global_scoring(global_matches,keypoints)
                     #fill tensor
                     #users,enrrolees in {1,10} --> index == user -1
-                    cmc_tensor[batch_id,user-1,enrollee-1] = score
-        return cmc_tensor
+                    similarity_tensor[batch_id,user-1,enrollee-1] = score
+        return similarity_tensor,users,enrollees
+
+    def construct_similarity_matrix(self,agg_fcn,**kwargs):
+        #get similarity tensor
+        similarity_tensor,users,enrrollees = self._compute_similarity_tensor()
+        # get similarity matrix after aggragation transformation given by agg_fcn
+        similarity_matrix = agg_fcn(similarity_tensor,**kwargs)
+        # set index and columns (users,enrrolees)
+        similarity_matrix = pd.DataFrame(similarity_matrix,index=users,columns=enrrollees)
+        return similarity_matrix
 
     def get_local_scoring(self,matches,N_best):
         #get kp distances from top N best matches
@@ -342,7 +353,9 @@ if __name__ == "__main__":
     # scores,ids = fpmatcher.create_dataset_scores(test_local_scoring,**scoring_otps)
     fpscorer=fpScorer(dataset_path,detector,detector_opts,cv2.NORM_HAMMING)
     # scores,labels = fpscorer.global_score_dataset(downsampling=True,**scoring_otps)
-    users_idx=fpscorer.compute_scores_tensor()
+    agg_fcn = np.sum
+    fcn_args ={"axis" : 0}
+    users_idx=fpscorer.construct_similarity_matrix(agg_fcn,**fcn_args)
 
 #     # #distributions... 
 #     # from sklearn.preprocessing import MinMaxScaler
