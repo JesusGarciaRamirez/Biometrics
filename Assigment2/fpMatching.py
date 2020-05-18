@@ -193,15 +193,24 @@ class fpMatcher(object):
         return score
 
 class fpScorer(fpMatcher):
-    def __init__(self,dataset_path,keypoint_extractor,detector_opts,distance_metric,local_kwargs):
+    def __init__(self,
+                dataset_path,
+                keypoint_extractor,
+                detector_opts,
+                distance_metric):
         super(fpScorer,self).__init__(dataset_path,keypoint_extractor,detector_opts,distance_metric)
-        self.local_kwargs = local_kwargs
+        self.scoring_schema = None
+        self.schema_opts = None
+
+    def set_scoring_att(self,scoring_schema,schema_opts):
+        self.scoring_schema = scoring_schema
+        self.schema_opts = scoring_otps
 
     def is_defined(self,argument):
         if(getattr(self,argument)==None):
             raise ValueError
 
-    def dataset_scoring(self,local,downsampling=True):
+    def dataset_scoring(self,downsampling=True):
         try:
             is_defined(self,"images")
         except:
@@ -211,6 +220,7 @@ class fpScorer(fpMatcher):
             index_list = list(np.random.choice(len(self.images), 30,replace=False))
         else:
             index_list = range(len(self.images))
+
         genuine_ids=[]
         scores=[]   
         for count,idx1 in tqdm(enumerate(index_list)):
@@ -218,10 +228,8 @@ class fpScorer(fpMatcher):
             for idx2 in rest_idx:
                 #get samples info
                 images,masks,labels= self.get_samples_info([idx1,idx2])
-                if (local):
-                    score = self.local_scoring_schema(images,masks,**self.local_kwargs)
-                else: 
-                    score =self.global_scoring_schema(images,masks)
+                #get scores
+                score = self.scoring_schema(self,images,masks,**self.schema_opts)
                 #update
                 scores.append(score)
                 label = 1 if labels[0]==labels[1] else 0
@@ -231,7 +239,7 @@ class fpScorer(fpMatcher):
         genuine_ids = np.array(genuine_ids,dtype=np.int32)
         return scores,genuine_ids
 
-    def _compute_similarity_tensor(self,local):
+    def _compute_similarity_tensor(self):
         try:
             is_defined(self,"labels")
         except:
@@ -254,55 +262,60 @@ class fpScorer(fpMatcher):
                 for user_id,user in zip(users_idx,users):
                     #get pair info
                     images,masks, _= self.get_samples_info([user_id,enrollee_id])
-                    if (local):
-                        score = self.local_scoring_schema(images,masks,**self.local_kwargs)
-                    else: 
-                        score =self.global_scoring_schema(images,masks)
+                    #get scores
+                    score = self.scoring_schema(self,images,masks,**self.schema_opts)
                     #fill tensor
                     #users,enrrolees in {1,10} --> index == user -1
                     similarity_tensor[batch_id,user-1,enrollee-1] = score
         return similarity_tensor,users,enrollees
 
-    def construct_similarity_matrix(self,local,agg_fcn,**kwargs):
+    def construct_similarity_matrix(self,agg_fcn,**kwargs):
         #get similarity tensor
-        similarity_tensor,users,enrrollees = self._compute_similarity_tensor(local)
+        similarity_tensor,users,enrrollees = self._compute_similarity_tensor()
         # get similarity matrix after aggragation transformation given by agg_fcn
         similarity_matrix = agg_fcn(similarity_tensor,**kwargs)
         # set index and columns (users,enrrolees)
         similarity_matrix = pd.DataFrame(similarity_matrix,index=users,columns=enrrollees)
         return similarity_matrix
 
+def local_scoring_schema(scorer,images,masks,N_best):
+    #local matching
+    matches,_ = scorer.match_BruteForce_local(images,masks)
+    #get kp distances from top N best matches
+    best_matches_distances=np.array([matches[idx].distance 
+                                    for idx in range(N_best)],dtype=np.float32)
+    #local score == Inverse of mean feature distances 
+    score = 1/ (np.mean(best_matches_distances) + 1)
+    return score
 
-    def local_scoring_schema(self,images,masks,N_best):
-        #local matching
-        matches,_ = self.match_BruteForce_local(images,masks)
-        #get kp distances from top N best matches
-        best_matches_distances=np.array([matches[idx].distance 
-                                        for idx in range(N_best)],dtype=np.float32)
-        #local score == Inverse of mean feature distances 
-        score = 1/ (np.mean(best_matches_distances) + 1)
-        return score
+def global_scoring_schema(scorer,images,masks,**kwargs):
+    #global matching
+    _, global_matches, _, keypoints = scorer.match_BruteForce_global(images,masks)
+    #get affine keypoints from matches
+    # retain only the keypoints associated to the best matches 
+    src_pts = np.float32([keypoints[0][m.queryIdx].pt for m in global_matches]).reshape(-1, 1, 2)
+    dst_pts = np.float32([keypoints[1][m.trainIdx].pt for m in global_matches]).reshape(-1, 1, 2)
+    #get distances
+    geometric_distances = np.float32([distance.euclidean(kp1,kp2) for kp1,kp2 in zip(src_pts,dst_pts)])
+    inv_distances = 1./geometric_distances
+    #global score == Inverse of mean geometrical distances 
+    # scale_factor = (len(global_matches)/len(keypoints[0])+len(keypoints[1]))
+    score = np.sum(inv_distances)
+    # score  = len(global_matches)
+    return score
 
-    def global_scoring_schema(self,images,masks):
-        #global matching
-        _, global_matches, _, keypoints = self.match_BruteForce_global(images,masks)
-        #get affine keypoints from matches
-        # retain only the keypoints associated to the best matches 
-        src_pts = np.float32([keypoints[0][m.queryIdx].pt for m in global_matches]).reshape(-1, 1, 2)
-        dst_pts = np.float32([keypoints[1][m.trainIdx].pt for m in global_matches]).reshape(-1, 1, 2)
-        #get distances
-        geometric_distances = np.float32([distance.euclidean(kp1,kp2) for kp1,kp2 in zip(src_pts,dst_pts)])
-        inv_distances = 1./geometric_distances
-        #global score == Inverse of mean geometrical distances 
-        # scale_factor = (len(global_matches)/len(keypoints[0])+len(keypoints[1]))
-        score = np.sum(inv_distances)
-        # score  = len(global_matches)
-        return score
+def combination_scoring_schema(scorer,images,masks,**kwargs):
+    #global matching
+    _, global_matches, _, _ = scorer.match_BruteForce_global(images,masks)
+    #get distances from affine matches
+    features_distances=np.array([matched_instance.distance 
+                                for matched_instance in global_matches],
+                                dtype=np.float32)
+    inv_distances = 1./features_distances
+    #global score == sum of inverse of feature distances of points in Affine transformation
+    score = np.sum(inv_distances)
+    return score
 
-def combine_scores(scores,agg_fcn,**kwargs):
-    #Aggregate function(agg_fcn) to local & Global scores
-    final_scores = agg_fcn(*scores,**kwargs)
-    return final_scores
 
 class pair_sampler(object):
     def __init__(self,labels):
