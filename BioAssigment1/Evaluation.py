@@ -202,3 +202,12 @@ class Metrics(object):
         ax.set_title(title)
         ax.legend(loc="lower right")
         # plt.show()
+
+    def plot_joint_dist(self,ax):
+      scores_gen = self.scores[self.labels == 1]
+      scores_imp = self.scores[self.labels != 1]
+      ax.hist(scores_gen,density=True,label="genuine dist")
+      ax.hist(scores_imp,density=True,label="impostor dist")
+      ax.legend()
+      title=self._set_title('Score Distributions')
+      ax.set_title(title)

@@ -11,6 +11,7 @@ project_path=os.path.dirname(os.getcwd())
 sys.path.append(project_path)
 from BioAssigment1.CMC import CMC
 from BioAssigment1.Evaluation import Metrics
+from utils_bio import pair_sampler
 
 class fpMatcher(object):
     def __init__(self,dataset_path,keypoint_extractor,detector_opts,distance_metric):
@@ -317,16 +318,6 @@ def combination_scoring_schema(scorer,images,masks,**kwargs):
     return score
 
 
-class pair_sampler(object):
-    def __init__(self,labels):
-        self.labels=np.array(labels,dtype=np.int32)
-
-    def __call__(self,query_label):
-        #find id
-        found_id = np.argwhere(self.labels == query_label)[0] #first occurence of label==query_label
-        #set label of found_id to -1 so we can´t get this same id again
-        self.labels[found_id] = -1
-        return int(found_id)
 
 #Debugging
 if __name__ == "__main__":
